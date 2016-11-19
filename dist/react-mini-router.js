@@ -1,4 +1,4 @@
-/*! ReactMiniRouter 1.2.0 - https://github.com/larrymyers/react-mini-router */
+/*! ReactMiniRouter 2.0.0 - https://github.com/larrymyers/react-mini-router */
 var ReactMiniRouter =
 /******/ (function(modules) { // webpackBootstrap
 /******/ 	// The module cache
@@ -48,7 +48,7 @@ var ReactMiniRouter =
 
 	module.exports = {
 	    RouterMixin: __webpack_require__(1),
-	    navigate: __webpack_require__(12)
+	    navigate: __webpack_require__(11)
 	};
 
 /***/ },
@@ -58,10 +58,9 @@ var ReactMiniRouter =
 	var React = __webpack_require__(2),
 	    ReactDOM = __webpack_require__(3),
 	    EventListener = __webpack_require__(4),
-	    getEventTarget = __webpack_require__(7),
-	    pathToRegexp = __webpack_require__(8),
-	    urllite = __webpack_require__(10),
-	    detect = __webpack_require__(11);
+	    pathToRegexp = __webpack_require__(7),
+	    urllite = __webpack_require__(9),
+	    detect = __webpack_require__(10);
 
 	var PropValidation = {
 	    path: React.PropTypes.string,
@@ -306,6 +305,19 @@ var ReactMiniRouter =
 	    return parsed;
 	}
 
+	function getEventTarget(nativeEvent) {
+	  var target = nativeEvent.target || nativeEvent.srcElement || window;
+
+	  // Normalize SVG <use> element events #4963
+	  if (target.correspondingUseElement) {
+	    target = target.correspondingUseElement;
+	  }
+
+	  // Safari may fire events on text nodes (Node.TEXT_NODE is 3).
+	  // @see http://www.quirksmode.org/js/events_properties.html
+	  return target.nodeType === 3 ? target.parentNode : target;
+	}
+
 
 /***/ },
 /* 2 */
@@ -414,14 +426,103 @@ var ReactMiniRouter =
 /***/ function(module, exports) {
 
 	// shim for using process in browser
-
 	var process = module.exports = {};
+
+	// cached from whatever global is present so that test runners that stub it
+	// don't break things.  But we need to wrap it in a try catch in case it is
+	// wrapped in strict mode code which doesn't define any globals.  It's inside a
+	// function because try/catches deoptimize in certain engines.
+
+	var cachedSetTimeout;
+	var cachedClearTimeout;
+
+	function defaultSetTimout() {
+	    throw new Error('setTimeout has not been defined');
+	}
+	function defaultClearTimeout () {
+	    throw new Error('clearTimeout has not been defined');
+	}
+	(function () {
+	    try {
+	        if (typeof setTimeout === 'function') {
+	            cachedSetTimeout = setTimeout;
+	        } else {
+	            cachedSetTimeout = defaultSetTimout;
+	        }
+	    } catch (e) {
+	        cachedSetTimeout = defaultSetTimout;
+	    }
+	    try {
+	        if (typeof clearTimeout === 'function') {
+	            cachedClearTimeout = clearTimeout;
+	        } else {
+	            cachedClearTimeout = defaultClearTimeout;
+	        }
+	    } catch (e) {
+	        cachedClearTimeout = defaultClearTimeout;
+	    }
+	} ())
+	function runTimeout(fun) {
+	    if (cachedSetTimeout === setTimeout) {
+	        //normal enviroments in sane situations
+	        return setTimeout(fun, 0);
+	    }
+	    // if setTimeout wasn't available but was latter defined
+	    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+	        cachedSetTimeout = setTimeout;
+	        return setTimeout(fun, 0);
+	    }
+	    try {
+	        // when when somebody has screwed with setTimeout but no I.E. maddness
+	        return cachedSetTimeout(fun, 0);
+	    } catch(e){
+	        try {
+	            // When we are in I.E. but the script has been evaled so I.E. doesn't trust the global object when called normally
+	            return cachedSetTimeout.call(null, fun, 0);
+	        } catch(e){
+	            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error
+	            return cachedSetTimeout.call(this, fun, 0);
+	        }
+	    }
+
+
+	}
+	function runClearTimeout(marker) {
+	    if (cachedClearTimeout === clearTimeout) {
+	        //normal enviroments in sane situations
+	        return clearTimeout(marker);
+	    }
+	    // if clearTimeout wasn't available but was latter defined
+	    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+	        cachedClearTimeout = clearTimeout;
+	        return clearTimeout(marker);
+	    }
+	    try {
+	        // when when somebody has screwed with setTimeout but no I.E. maddness
+	        return cachedClearTimeout(marker);
+	    } catch (e){
+	        try {
+	            // When we are in I.E. but the script has been evaled so I.E. doesn't  trust the global object when called normally
+	            return cachedClearTimeout.call(null, marker);
+	        } catch (e){
+	            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error.
+	            // Some versions of I.E. have different rules for clearTimeout vs setTimeout
+	            return cachedClearTimeout.call(this, marker);
+	        }
+	    }
+
+
+
+	}
 	var queue = [];
 	var draining = false;
 	var currentQueue;
 	var queueIndex = -1;
 
 	function cleanUpNextTick() {
+	    if (!draining || !currentQueue) {
+	        return;
+	    }
 	    draining = false;
 	    if (currentQueue.length) {
 	        queue = currentQueue.concat(queue);
@@ -437,7 +538,7 @@ var ReactMiniRouter =
 	    if (draining) {
 	        return;
 	    }
-	    var timeout = setTimeout(cleanUpNextTick);
+	    var timeout = runTimeout(cleanUpNextTick);
 	    draining = true;
 
 	    var len = queue.length;
@@ -454,7 +555,7 @@ var ReactMiniRouter =
 	    }
 	    currentQueue = null;
 	    draining = false;
-	    clearTimeout(timeout);
+	    runClearTimeout(timeout);
 	}
 
 	process.nextTick = function (fun) {
@@ -466,7 +567,7 @@ var ReactMiniRouter =
 	    }
 	    queue.push(new Item(fun, args));
 	    if (queue.length === 1 && !draining) {
-	        setTimeout(drainQueue, 0);
+	        runTimeout(drainQueue);
 	    }
 	};
 
@@ -551,43 +652,9 @@ var ReactMiniRouter =
 
 /***/ },
 /* 7 */
-/***/ function(module, exports) {
-
-	/**
-	 * Copyright 2013-2015, Facebook, Inc.
-	 * All rights reserved.
-	 *
-	 * This source code is licensed under the BSD-style license found in the
-	 * LICENSE file in the root directory of this source tree. An additional grant
-	 * of patent rights can be found in the PATENTS file in the same directory.
-	 *
-	 * @providesModule getEventTarget
-	 * @typechecks static-only
-	 */
-
-	'use strict';
-
-	/**
-	 * Gets the target node from a native browser event by accounting for
-	 * inconsistencies in browser DOM APIs.
-	 *
-	 * @param {object} nativeEvent Native browser event.
-	 * @return {DOMEventTarget} Target node.
-	 */
-	function getEventTarget(nativeEvent) {
-	  var target = nativeEvent.target || nativeEvent.srcElement || window;
-	  // Safari may fire events on text nodes (Node.TEXT_NODE is 3).
-	  // @see http://www.quirksmode.org/js/events_properties.html
-	  return target.nodeType === 3 ? target.parentNode : target;
-	}
-
-	module.exports = getEventTarget;
-
-/***/ },
-/* 8 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var isarray = __webpack_require__(9)
+	var isarray = __webpack_require__(8)
 
 	/**
 	 * Expose `pathToRegexp`.
@@ -613,20 +680,22 @@ var ReactMiniRouter =
 	  // "/:test(\\d+)?" => ["/", "test", "\d+", undefined, "?", undefined]
 	  // "/route(\\d+)"  => [undefined, undefined, undefined, "\d+", undefined, undefined]
 	  // "/*"            => ["/", undefined, undefined, undefined, undefined, "*"]
-	  '([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^()])+)\\))?|\\(((?:\\\\.|[^()])+)\\))([+*?])?|(\\*))'
+	  '([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))'
 	].join('|'), 'g')
 
 	/**
 	 * Parse a string for the raw tokens.
 	 *
-	 * @param  {String} str
-	 * @return {Array}
+	 * @param  {string}  str
+	 * @param  {Object=} options
+	 * @return {!Array}
 	 */
-	function parse (str) {
+	function parse (str, options) {
 	  var tokens = []
 	  var key = 0
 	  var index = 0
 	  var path = ''
+	  var defaultDelimiter = options && options.delimiter || '/'
 	  var res
 
 	  while ((res = PATH_REGEXP.exec(str)) != null) {
@@ -642,23 +711,25 @@ var ReactMiniRouter =
 	      continue
 	    }
 
+	    var next = str[index]
+	    var prefix = res[2]
+	    var name = res[3]
+	    var capture = res[4]
+	    var group = res[5]
+	    var modifier = res[6]
+	    var asterisk = res[7]
+
 	    // Push the current path onto the tokens.
 	    if (path) {
 	      tokens.push(path)
 	      path = ''
 	    }
 
-	    var prefix = res[2]
-	    var name = res[3]
-	    var capture = res[4]
-	    var group = res[5]
-	    var suffix = res[6]
-	    var asterisk = res[7]
-
-	    var repeat = suffix === '+' || suffix === '*'
-	    var optional = suffix === '?' || suffix === '*'
-	    var delimiter = prefix || '/'
-	    var pattern = capture || group || (asterisk ? '.*' : '[^' + delimiter + ']+?')
+	    var partial = prefix != null && next != null && next !== prefix
+	    var repeat = modifier === '+' || modifier === '*'
+	    var optional = modifier === '?' || modifier === '*'
+	    var delimiter = res[2] || defaultDelimiter
+	    var pattern = capture || group
 
 	    tokens.push({
 	      name: name || key++,
@@ -666,7 +737,9 @@ var ReactMiniRouter =
 	      delimiter: delimiter,
 	      optional: optional,
 	      repeat: repeat,
-	      pattern: escapeGroup(pattern)
+	      partial: partial,
+	      asterisk: !!asterisk,
+	      pattern: pattern ? escapeGroup(pattern) : (asterisk ? '.*' : '[^' + escapeString(delimiter) + ']+?')
 	    })
 	  }
 
@@ -686,11 +759,36 @@ var ReactMiniRouter =
 	/**
 	 * Compile a string to a template function for the path.
 	 *
-	 * @param  {String}   str
-	 * @return {Function}
+	 * @param  {string}             str
+	 * @param  {Object=}            options
+	 * @return {!function(Object=, Object=)}
 	 */
-	function compile (str) {
-	  return tokensToFunction(parse(str))
+	function compile (str, options) {
+	  return tokensToFunction(parse(str, options))
+	}
+
+	/**
+	 * Prettier encoding of URI path segments.
+	 *
+	 * @param  {string}
+	 * @return {string}
+	 */
+	function encodeURIComponentPretty (str) {
+	  return encodeURI(str).replace(/[\/?#]/g, function (c) {
+	    return '%' + c.charCodeAt(0).toString(16).toUpperCase()
+	  })
+	}
+
+	/**
+	 * Encode the asterisk parameter. Similar to `pretty`, but allows slashes.
+	 *
+	 * @param  {string}
+	 * @return {string}
+	 */
+	function encodeAsterisk (str) {
+	  return encodeURI(str).replace(/[?#]/g, function (c) {
+	    return '%' + c.charCodeAt(0).toString(16).toUpperCase()
+	  })
 	}
 
 	/**
@@ -703,13 +801,15 @@ var ReactMiniRouter =
 	  // Compile all the patterns before compilation.
 	  for (var i = 0; i < tokens.length; i++) {
 	    if (typeof tokens[i] === 'object') {
-	      matches[i] = new RegExp('^' + tokens[i].pattern + '$')
+	      matches[i] = new RegExp('^(?:' + tokens[i].pattern + ')$')
 	    }
 	  }
 
-	  return function (obj) {
+	  return function (obj, opts) {
 	    var path = ''
 	    var data = obj || {}
+	    var options = opts || {}
+	    var encode = options.pretty ? encodeURIComponentPretty : encodeURIComponent
 
 	    for (var i = 0; i < tokens.length; i++) {
 	      var token = tokens[i]
@@ -725,6 +825,11 @@ var ReactMiniRouter =
 
 	      if (value == null) {
 	        if (token.optional) {
+	          // Prepend partial segment prefixes.
+	          if (token.partial) {
+	            path += token.prefix
+	          }
+
 	          continue
 	        } else {
 	          throw new TypeError('Expected "' + token.name + '" to be defined')
@@ -733,7 +838,7 @@ var ReactMiniRouter =
 
 	      if (isarray(value)) {
 	        if (!token.repeat) {
-	          throw new TypeError('Expected "' + token.name + '" to not repeat, but received "' + value + '"')
+	          throw new TypeError('Expected "' + token.name + '" to not repeat, but received `' + JSON.stringify(value) + '`')
 	        }
 
 	        if (value.length === 0) {
@@ -745,10 +850,10 @@ var ReactMiniRouter =
 	        }
 
 	        for (var j = 0; j < value.length; j++) {
-	          segment = encodeURIComponent(value[j])
+	          segment = encode(value[j])
 
 	          if (!matches[i].test(segment)) {
-	            throw new TypeError('Expected all "' + token.name + '" to match "' + token.pattern + '", but received "' + segment + '"')
+	            throw new TypeError('Expected all "' + token.name + '" to match "' + token.pattern + '", but received `' + JSON.stringify(segment) + '`')
 	          }
 
 	          path += (j === 0 ? token.prefix : token.delimiter) + segment
@@ -757,7 +862,7 @@ var ReactMiniRouter =
 	        continue
 	      }
 
-	      segment = encodeURIComponent(value)
+	      segment = token.asterisk ? encodeAsterisk(value) : encode(value)
 
 	      if (!matches[i].test(segment)) {
 	        throw new TypeError('Expected "' + token.name + '" to match "' + token.pattern + '", but received "' + segment + '"')
@@ -773,18 +878,18 @@ var ReactMiniRouter =
 	/**
 	 * Escape a regular expression string.
 	 *
-	 * @param  {String} str
-	 * @return {String}
+	 * @param  {string} str
+	 * @return {string}
 	 */
 	function escapeString (str) {
-	  return str.replace(/([.+*?=^!:${}()[\]|\/])/g, '\\$1')
+	  return str.replace(/([.+*?=^!:${}()[\]|\/\\])/g, '\\$1')
 	}
 
 	/**
 	 * Escape the capturing group by escaping special characters and meaning.
 	 *
-	 * @param  {String} group
-	 * @return {String}
+	 * @param  {string} group
+	 * @return {string}
 	 */
 	function escapeGroup (group) {
 	  return group.replace(/([=!:$\/()])/g, '\\$1')
@@ -793,9 +898,9 @@ var ReactMiniRouter =
 	/**
 	 * Attach the keys as a property of the regexp.
 	 *
-	 * @param  {RegExp} re
-	 * @param  {Array}  keys
-	 * @return {RegExp}
+	 * @param  {!RegExp} re
+	 * @param  {Array}   keys
+	 * @return {!RegExp}
 	 */
 	function attachKeys (re, keys) {
 	  re.keys = keys
@@ -806,7 +911,7 @@ var ReactMiniRouter =
 	 * Get the flags for a regexp from the options.
 	 *
 	 * @param  {Object} options
-	 * @return {String}
+	 * @return {string}
 	 */
 	function flags (options) {
 	  return options.sensitive ? '' : 'i'
@@ -815,9 +920,9 @@ var ReactMiniRouter =
 	/**
 	 * Pull out keys from a regexp.
 	 *
-	 * @param  {RegExp} path
-	 * @param  {Array}  keys
-	 * @return {RegExp}
+	 * @param  {!RegExp} path
+	 * @param  {!Array}  keys
+	 * @return {!RegExp}
 	 */
 	function regexpToRegexp (path, keys) {
 	  // Use a negative lookahead to match only capturing groups.
@@ -831,6 +936,8 @@ var ReactMiniRouter =
 	        delimiter: null,
 	        optional: false,
 	        repeat: false,
+	        partial: false,
+	        asterisk: false,
 	        pattern: null
 	      })
 	    }
@@ -842,10 +949,10 @@ var ReactMiniRouter =
 	/**
 	 * Transform an array into a regexp.
 	 *
-	 * @param  {Array}  path
-	 * @param  {Array}  keys
-	 * @param  {Object} options
-	 * @return {RegExp}
+	 * @param  {!Array}  path
+	 * @param  {Array}   keys
+	 * @param  {!Object} options
+	 * @return {!RegExp}
 	 */
 	function arrayToRegexp (path, keys, options) {
 	  var parts = []
@@ -862,41 +969,34 @@ var ReactMiniRouter =
 	/**
 	 * Create a path regexp from string input.
 	 *
-	 * @param  {String} path
-	 * @param  {Array}  keys
-	 * @param  {Object} options
-	 * @return {RegExp}
+	 * @param  {string}  path
+	 * @param  {!Array}  keys
+	 * @param  {!Object} options
+	 * @return {!RegExp}
 	 */
 	function stringToRegexp (path, keys, options) {
-	  var tokens = parse(path)
-	  var re = tokensToRegExp(tokens, options)
-
-	  // Attach keys back to the regexp.
-	  for (var i = 0; i < tokens.length; i++) {
-	    if (typeof tokens[i] !== 'string') {
-	      keys.push(tokens[i])
-	    }
-	  }
-
-	  return attachKeys(re, keys)
+	  return tokensToRegExp(parse(path, options), keys, options)
 	}
 
 	/**
 	 * Expose a function for taking tokens and returning a RegExp.
 	 *
-	 * @param  {Array}  tokens
-	 * @param  {Array}  keys
-	 * @param  {Object} options
-	 * @return {RegExp}
+	 * @param  {!Array}          tokens
+	 * @param  {(Array|Object)=} keys
+	 * @param  {Object=}         options
+	 * @return {!RegExp}
 	 */
-	function tokensToRegExp (tokens, options) {
+	function tokensToRegExp (tokens, keys, options) {
+	  if (!isarray(keys)) {
+	    options = /** @type {!Object} */ (keys || options)
+	    keys = []
+	  }
+
 	  options = options || {}
 
 	  var strict = options.strict
 	  var end = options.end !== false
 	  var route = ''
-	  var lastToken = tokens[tokens.length - 1]
-	  var endsWithSlash = typeof lastToken === 'string' && /\/$/.test(lastToken)
 
 	  // Iterate over the tokens and create our regexp string.
 	  for (var i = 0; i < tokens.length; i++) {
@@ -906,17 +1006,19 @@ var ReactMiniRouter =
 	      route += escapeString(token)
 	    } else {
 	      var prefix = escapeString(token.prefix)
-	      var capture = token.pattern
+	      var capture = '(?:' + token.pattern + ')'
+
+	      keys.push(token)
 
 	      if (token.repeat) {
 	        capture += '(?:' + prefix + capture + ')*'
 	      }
 
 	      if (token.optional) {
-	        if (prefix) {
+	        if (!token.partial) {
 	          capture = '(?:' + prefix + '(' + capture + '))?'
 	        } else {
-	          capture = '(' + capture + ')?'
+	          capture = prefix + '(' + capture + ')?'
 	        }
 	      } else {
 	        capture = prefix + '(' + capture + ')'
@@ -926,12 +1028,15 @@ var ReactMiniRouter =
 	    }
 	  }
 
+	  var delimiter = escapeString(options.delimiter || '/')
+	  var endsWithDelimiter = route.slice(-delimiter.length) === delimiter
+
 	  // In non-strict mode we allow a slash at the end of match. If the path to
 	  // match already ends with a slash, we remove it for consistency. The slash
 	  // is valid at the end of a path match, not in the middle. This is important
 	  // in non-ending mode, where "/test/" shouldn't match "/test//route".
 	  if (!strict) {
-	    route = (endsWithSlash ? route.slice(0, -2) : route) + '(?:\\/(?=$))?'
+	    route = (endsWithDelimiter ? route.slice(0, -delimiter.length) : route) + '(?:' + delimiter + '(?=$))?'
 	  }
 
 	  if (end) {
@@ -939,10 +1044,10 @@ var ReactMiniRouter =
 	  } else {
 	    // In non-ending mode, we need the capturing groups to match as much as
 	    // possible by using a positive lookahead to the end or next path segment.
-	    route += strict && endsWithSlash ? '' : '(?=\\/|$)'
+	    route += strict && endsWithDelimiter ? '' : '(?=' + delimiter + '|$)'
 	  }
 
-	  return new RegExp('^' + route, flags(options))
+	  return attachKeys(new RegExp('^' + route, flags(options)), keys)
 	}
 
 	/**
@@ -952,35 +1057,33 @@ var ReactMiniRouter =
 	 * placeholder key descriptions. For example, using `/user/:id`, `keys` will
 	 * contain `[{ name: 'id', delimiter: '/', optional: false, repeat: false }]`.
 	 *
-	 * @param  {(String|RegExp|Array)} path
-	 * @param  {Array}                 [keys]
-	 * @param  {Object}                [options]
-	 * @return {RegExp}
+	 * @param  {(string|RegExp|Array)} path
+	 * @param  {(Array|Object)=}       keys
+	 * @param  {Object=}               options
+	 * @return {!RegExp}
 	 */
 	function pathToRegexp (path, keys, options) {
-	  keys = keys || []
-
 	  if (!isarray(keys)) {
-	    options = keys
+	    options = /** @type {!Object} */ (keys || options)
 	    keys = []
-	  } else if (!options) {
-	    options = {}
 	  }
 
+	  options = options || {}
+
 	  if (path instanceof RegExp) {
-	    return regexpToRegexp(path, keys, options)
+	    return regexpToRegexp(path, /** @type {!Array} */ (keys))
 	  }
 
 	  if (isarray(path)) {
-	    return arrayToRegexp(path, keys, options)
+	    return arrayToRegexp(/** @type {!Array} */ (path), /** @type {!Array} */ (keys), options)
 	  }
 
-	  return stringToRegexp(path, keys, options)
+	  return stringToRegexp(/** @type {string} */ (path), /** @type {!Array} */ (keys), options)
 	}
 
 
 /***/ },
-/* 9 */
+/* 8 */
 /***/ function(module, exports) {
 
 	module.exports = Array.isArray || function (arr) {
@@ -989,7 +1092,7 @@ var ReactMiniRouter =
 
 
 /***/ },
-/* 10 */
+/* 9 */
 /***/ function(module, exports) {
 
 	(function() {
@@ -1060,7 +1163,7 @@ var ReactMiniRouter =
 
 
 /***/ },
-/* 11 */
+/* 10 */
 /***/ function(module, exports) {
 
 	var canUseDOM = !!(
@@ -1082,11 +1185,11 @@ var ReactMiniRouter =
 
 
 /***/ },
-/* 12 */
+/* 11 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var detect = __webpack_require__(11);
-	var event = __webpack_require__(13);
+	var detect = __webpack_require__(10);
+	var event = __webpack_require__(12);
 
 	module.exports = function triggerUrl(url, silent) {
 	    if (detect.hasHashbang()) {
@@ -1103,10 +1206,10 @@ var ReactMiniRouter =
 
 
 /***/ },
-/* 13 */
+/* 12 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var detect = __webpack_require__(11);
+	var detect = __webpack_require__(10);
 
 	module.exports = {
 	    createEvent: function(name) {
